@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Browser LLM (Pure Client-Side)</title>
+<style>
+body { font-family: Arial; background:#111; color:#eee; text-align:center; }
+#chat { width:420px; margin:20px auto; border:1px solid #333; padding:10px; height:420px; overflow-y:auto; }
+input { width:300px; padding:10px; }
+button { padding:10px; }
+.msg { margin:5px; text-align:left; }
+.user { color:#4fc3f7; }
+.bot { color:#81c784; }
+.small { font-size:12px; opacity:0.7 }
+</style>
+</head>
+<body>
+<h2>Browser LLM (Chromebook Safe)</h2>
+<div id="chat"></div>
+<input id="input" placeholder="Type..." onkeydown="if(event.key==='Enter') send()" />
+<button onclick="send()">Send</button>
+<div class="small">Fully browser-based (no Python). First load downloads model.</div>
+
+<script type="module">
+let generator = null;
+let loading = true;
+
+async function loadTransformers(){
+  try {
+    return await import("https://esm.sh/@xenova/transformers@2.17.2");
+  } catch (e1) {
+    console.warn("esm.sh failed, trying jsdelivr...");
+    return await import("https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2");
+  }
+}
+
+async function init(){
+  addMessage("Loading model (this can take ~20s)...", "bot");
+
+  try {
+    const { pipeline } = await loadTransformers();
+
+    generator = await pipeline(
+      "text-generation",
+      "Xenova/distilgpt2"
+    );
+
+    loading = false;
+    addMessage("Model loaded locally in browser", "bot");
+  } catch (err) {
+    console.error(err);
+
+    addMessage("⚠️ Failed to load model.", "bot");
+    addMessage("Fix: open this file using Chrome 'Live Server' or host it online.", "bot");
+    addMessage("(Chromebook blocks AI models from file:// sometimes)", "bot");
+  }
+}
+
+init();
+
+async function reply(input){
+  if (loading || !generator) return "loading...";
+
+  try {
+    const output = await generator(input, {
+      max_new_tokens: 40,
+      temperature: 0.7,
+      top_k: 50,
+      do_sample: true
+    });
+
+    return output[0].generated_text.replace(input, "").trim() || "...";
+  } catch (e) {
+    console.error(e);
+    return "generation error";
+  }
+}
+
+function addMessage(text, cls){
+  const div = document.createElement("div");
+  div.className = "msg " + cls;
+  div.textContent = text;
+  document.getElementById("chat").appendChild(div);
+  document.getElementById("chat").scrollTop = 9999;
+}
+
+async function send(){
+  const input = document.getElementById("input");
+  const text = input.value;
+  if (!text) return;
+
+  addMessage("You: " + text, "user");
+
+  const res = await reply(text);
+  addMessage("Bot: " + res, "bot");
+
+  input.value = "";
+}
+
+// ---- tests ----
+async function runTests(){
+  console.assert(typeof reply === "function", "reply function missing");
+
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  await wait(3000);
+
+  const res = await reply("hello");
+  console.assert(typeof res === "string", "basic generation failed");
+
+  console.log("Tests done");
+}
+runTests();
+</script>
+</body>
+</html>
